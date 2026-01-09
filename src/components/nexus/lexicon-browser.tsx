@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { LexiconCard } from './lexicon-card';
-import { staticLexicon, getCategories, filterLexicon } from '@/lib/lexicon-data';
+import { useLexicon } from '@/lib/firebase-hooks';
 import type { LexiconTerm, KnowledgeLevel } from '@/types';
 
 interface LexiconBrowserProps {
@@ -13,27 +13,53 @@ interface LexiconBrowserProps {
 }
 
 export function LexiconBrowser({ onSelectTerm }: LexiconBrowserProps) {
+  const { terms, loading, error, isCloudSynced } = useLexicon();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<KnowledgeLevel | null>(null);
 
-  const categories = useMemo(() => getCategories(), []);
+  const categories = useMemo(() => {
+    const cats = [...new Set(terms.map(t => t.category).filter(Boolean))] as string[];
+    return cats.sort();
+  }, [terms]);
 
   const filteredTerms = useMemo(() => {
-    let terms = filterLexicon(search);
+    let filtered = terms;
 
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        t =>
+          t.term.toLowerCase().includes(q) ||
+          t.definition.toLowerCase().includes(q) ||
+          t.tags?.some(tag => tag.toLowerCase().includes(q))
+      );
+    }
+
+    // Category filter
     if (selectedCategory) {
-      terms = terms.filter(t => t.category === selectedCategory);
+      filtered = filtered.filter(t => t.category === selectedCategory);
     }
 
+    // Level filter
     if (selectedLevel) {
-      terms = terms.filter(t => t.level === selectedLevel);
+      filtered = filtered.filter(t => t.level === selectedLevel);
     }
 
-    return terms.sort((a, b) => a.term.localeCompare(b.term));
-  }, [search, selectedCategory, selectedLevel]);
+    return filtered.sort((a, b) => a.term.localeCompare(b.term));
+  }, [terms, search, selectedCategory, selectedLevel]);
 
   const levels: KnowledgeLevel[] = ['novice', 'intermediate', 'expert', 'theoretical'];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+        <span className="ml-3 text-gray-400">Loading knowledge base...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in">
@@ -41,9 +67,26 @@ export function LexiconBrowser({ onSelectTerm }: LexiconBrowserProps) {
       <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 mb-6 border-b border-gray-800 pb-4">
         <div>
           <h2 className="text-2xl font-bold text-white">Knowledge Graph</h2>
-          <p className="text-xs text-gray-500 font-mono mt-1">
-            {filteredTerms.length} NODES • PRIMARY LOCAL STORAGE
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-xs text-gray-500 font-mono">
+              {filteredTerms.length} NODES
+            </p>
+            <span className="text-gray-700">|</span>
+            {isCloudSynced ? (
+              <span className="flex items-center gap-1 text-xs text-emerald-500 font-mono">
+                <Cloud className="w-3 h-3" />
+                CLOUD SYNCED
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-amber-500 font-mono">
+                <CloudOff className="w-3 h-3" />
+                LOCAL ONLY
+              </span>
+            )}
+          </div>
+          {error && (
+            <p className="text-xs text-red-400 mt-1">{error}</p>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -103,7 +146,7 @@ export function LexiconBrowser({ onSelectTerm }: LexiconBrowserProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTerms.map(term => (
           <LexiconCard
-            key={term.term}
+            key={term.id || term.term}
             term={term}
             onClick={() => onSelectTerm?.(term)}
           />

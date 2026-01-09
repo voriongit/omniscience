@@ -1,13 +1,113 @@
 'use client';
 
-import { CheckCircle, AlertTriangle, Lock, Key } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, AlertTriangle, Lock, Key, Cloud, CloudOff, Database, RefreshCw, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { providerStatus } from '@/lib/ai-providers';
+import { useFirebaseStatus, seedLexiconToFirestore } from '@/lib/firebase-hooks';
 
 export function CortexSettings() {
+  const firebaseStatus = useFirebaseStatus();
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<{ success: number; errors: number } | null>(null);
+
+  const handleSeedLexicon = async () => {
+    if (!firebaseStatus.connected) return;
+
+    setSeeding(true);
+    setSeedResult(null);
+
+    try {
+      const result = await seedLexiconToFirestore();
+      setSeedResult(result);
+    } catch (err) {
+      console.error('Seed failed:', err);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   return (
     <div className="fade-in">
       <div className="max-w-2xl mx-auto space-y-6">
+        {/* Firebase Status */}
+        <div className={`glass p-6 rounded-xl border-l-4 ${
+          firebaseStatus.connected ? 'border-emerald-500' : 'border-amber-500'
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Database className="w-5 h-5" />
+              Cloud Sync Status
+            </h2>
+            {firebaseStatus.connected ? (
+              <span className="flex items-center gap-1 text-xs text-emerald-500 font-mono">
+                <Cloud className="w-3 h-3" />
+                CONNECTED
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-amber-500 font-mono">
+                <CloudOff className="w-3 h-3" />
+                {firebaseStatus.configured ? 'OFFLINE' : 'NOT CONFIGURED'}
+              </span>
+            )}
+          </div>
+
+          {firebaseStatus.connected ? (
+            <>
+              <p className="text-sm text-gray-400 mb-4">
+                Firebase Firestore is connected. Your lexicon syncs in real-time across all devices.
+              </p>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={handleSeedLexicon}
+                  disabled={seeding}
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                >
+                  {seeding ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                      Seeding...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3 h-3 mr-2" />
+                      Seed Static Data to Cloud
+                    </>
+                  )}
+                </Button>
+                {seedResult && (
+                  <span className="text-xs text-gray-500">
+                    Added {seedResult.success} terms
+                    {seedResult.errors > 0 && `, ${seedResult.errors} errors`}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-400 mb-4">
+                {firebaseStatus.configured
+                  ? `Connection failed: ${firebaseStatus.error}`
+                  : 'Add Firebase environment variables to enable cloud sync.'}
+              </p>
+              {!firebaseStatus.configured && (
+                <div className="bg-gray-800/50 p-3 rounded-lg">
+                  <p className="text-xs text-gray-500 font-mono mb-2">Required variables:</p>
+                  <ul className="text-xs text-gray-600 space-y-1 font-mono">
+                    <li>NEXT_PUBLIC_FIREBASE_API_KEY</li>
+                    <li>NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN</li>
+                    <li>NEXT_PUBLIC_FIREBASE_PROJECT_ID</li>
+                    <li>NEXT_PUBLIC_FIREBASE_APP_ID</li>
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Active Mode */}
         <div className="glass p-6 rounded-xl border-l-4 border-green-500">
           <h2 className="text-lg font-bold text-white mb-2">
